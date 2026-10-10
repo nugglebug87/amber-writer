@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {defaults,validState,demoDraft,makePayload} from '../public/core.js';
+import handler,{validPayload} from '../api/write.js';
+test('backups validate complete state and reject malformed drafts',()=>{const s=defaults();assert.equal(validState(s),true);s.drafts.push({id:'x',text:'lost context'});assert.equal(validState(s),false);});
+test('multi-select moods and all voice preferences reach the AI payload',()=>{const s=defaults();s.workspace.brief='Starting again';s.workspace.moods=['Warm','Fierce','Vulnerable'];s.dna.avoid='corporate language';s.thinking.style='Storyteller';s.samples=[{text:'my words'}];const p=makePayload(s);assert.deepEqual(p.moods,s.workspace.moods);assert.equal(p.dna.avoid,'corporate language');assert.equal(p.thinking.style,'Storyteller');assert.deepEqual(p.samples,['my words']);assert.ok(validPayload(p));});
+test('sample context is bounded and demo is explicitly labeled',()=>{const s=defaults();s.workspace.brief='My idea';s.samples=[{text:'x'.repeat(10000)},{text:'y'.repeat(10000)}];assert.equal(makePayload(s).samples.join('').length,12000);assert.match(demoDraft(s.workspace),/DEMO TEMPLATE/);assert.match(demoDraft(s.workspace),/My idea/);});
+function response(){return {headers:{},statusCode:0,setHeader(k,v){this.headers[k]=v;},status(n){this.statusCode=n;return this;},json(v){this.data=v;return this;}};}
+test('unconfigured endpoint cannot generate or expose a provider key',async()=>{delete process.env.OPENAI_API_KEY;delete process.env.APP_ACCESS_TOKEN;const res=response();await handler({method:'POST',headers:{},body:{}},res);assert.equal(res.statusCode,503);assert.equal(res.headers['Cache-Control'],'no-store');});
+test('token, payload validation and provider request work without exposing secrets',async()=>{process.env.OPENAI_API_KEY='test-provider-key';process.env.APP_ACCESS_TOKEN='test-studio-token';let r=response();await handler({method:'POST',headers:{authorization:'Bearer wrong'},body:{}},r);assert.equal(r.statusCode,401);
+r=response();await handler({method:'POST',headers:{authorization:'Bearer test-studio-token'},body:{action:'check'}},r);assert.equal(r.statusCode,200);
+r=response();await handler({method:'POST',headers:{authorization:'Bearer test-studio-token'},body:{}},r);assert.equal(r.statusCode,400);
+const original=globalThis.fetch;let sent;
+globalThis.fetch=async(url,options)=>{sent=JSON.parse(options.body);return {ok:true,json:async()=>({status:'completed',output:[{type:'message',content:[{type:'output_text',text:'A thoughtful draft.'}]}]})};};
+try{const s=defaults();s.workspace.brief='A thought';r=response();await handler({method:'POST',headers:{authorization:'Bearer test-studio-token'},body:makePayload(s)},r);assert.equal(r.statusCode,200);assert.equal(r.data.text,'A thoughtful draft.');assert.equal(sent.store,false);assert.equal(JSON.stringify(r.data).includes('test-provider-key'),false);}finally{globalThis.fetch=original;delete process.env.OPENAI_API_KEY;delete process.env.APP_ACCESS_TOKEN;}
+});
