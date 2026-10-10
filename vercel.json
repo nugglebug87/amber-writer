@@ -1,0 +1,8 @@
+{
+  "outputDirectory": "public",
+  "functions": {
+    "api/write.js": {
+      "maxDuration": 60
+    }
+  }
+}
