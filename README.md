@@ -1,4 +1,4 @@
-# Amber Writer
+# Auto-Ink’d
 
 A responsive personal writing studio with a dark, amber-accented luxury design.
 
